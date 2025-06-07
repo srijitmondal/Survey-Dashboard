@@ -1,3 +1,4 @@
+
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -5,127 +6,44 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Label } from '@/components/ui/label';
 import { toast } from '@/hooks/use-toast';
 import { User } from '@/pages/Index';
-import { API_ENDPOINTS } from '@/utils/config';
 
 interface LoginFormProps {
   onLogin: (user: User) => void;
 }
 
+// Mock users for demonstration
+const mockUsers: User[] = [
+  { id: '1', email: 'admin@example.com', name: 'John Admin', role: 'admin', phone_number: '+1234567890' },
+  { id: '2', email: 'user@example.com', name: 'Jane User', role: 'user', phone_number: '+0987654321' },
+];
+
 const LoginForm = ({ onLogin }: LoginFormProps) => {
-  const [identifier, setIdentifier] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
-  const validateIdentifier = (value: string) => {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    const phoneRegex = /^\d{10}$/;  // Assumes 10-digit phone numbers
-  
-    if (!value) {
-      toast({
-        title: "Validation Error",
-        description: "Telephone number or e-mail is required",
-        variant: "destructive",
-      });
-      return false;
-    }
-    
-    if (!emailRegex.test(value) && !phoneRegex.test(value)) {
-      toast({
-        title: "Validation Error",
-        description: "Please enter a valid e-mail address or Telephone number",
-        variant: "destructive",
-      });
-      return false;
-    }
-  
-    return true;
-  };
-
-  const validatePassword = (password: string) => {
-    if (!password) {
-      toast({
-        title: "Validation Error",
-        description: "Password is required",
-        variant: "destructive",
-      });
-      return false;
-    }
-    if (password.length < 5) {
-      toast({
-        title: "Validation Error",
-        description: "Password must be at least 5 characters",
-        variant: "destructive",
-      });
-      return false;
-    }
-    return true;
-  };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    const isIdentifierValid = validateIdentifier(identifier);
-    const isPasswordValid = validatePassword(password);
-
-    if (!isIdentifierValid || !isPasswordValid) {
-      return;
-    }
-
     setIsLoading(true);
 
-    try {
-      const response = await fetch(API_ENDPOINTS.LOGIN, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-        body: JSON.stringify({ 
-          identifier, 
-          password 
-        }),
+    // Mock authentication
+    const user = mockUsers.find(u => u.email === email);
+    
+    if (user && password === 'password') {
+      toast({
+        title: "Login successful",
+        description: `Welcome back, ${user.name}!`,
       });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('Server error response:', errorText);
-        throw new Error('Enter Correct e-mail/Telephone and Password');
-      }
-
-      const data = await response.json();
-      
-      if (data.id) {
-        const user: User = {
-          id: data.id.toString(),
-          name: data.name,
-          role: data.role,
-          email: data.email || identifier,
-          phone_number: data.phone_number || identifier
-        };
-
-        localStorage.setItem('userId', data.id.toString());
-        localStorage.setItem('userName', data.name);
-        localStorage.setItem('userRole', data.role);
-
-        toast({
-          title: "Login successful",
-          description: `Welcome back, ${user.name}!`,
-        });
-        
-        onLogin(user);
-      } else {
-        throw new Error(data.error || 'Invalid credentials');
-      }
-    } catch (error) {
-      console.error('Login error:', error);
+      onLogin(user);
+    } else {
       toast({
         title: "Login failed",
-        description: error instanceof Error ? error.message : 'Network error. Please try again.',
+        description: "Invalid email or password. Try admin@example.com or user@example.com with password 'password'",
         variant: "destructive",
       });
-    } finally {
-      setIsLoading(false);
     }
+    
+    setIsLoading(false);
   };
 
   return (
@@ -146,13 +64,13 @@ const LoginForm = ({ onLogin }: LoginFormProps) => {
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="identifier" className="text-gray-300">Email or Phone Number</Label>
+                <Label htmlFor="email" className="text-gray-300">Email</Label>
                 <Input
-                  id="identifier"
-                  type="text"
-                  placeholder="Enter your email or phone number"
-                  value={identifier}
-                  onChange={(e) => setIdentifier(e.target.value)}
+                  id="email"
+                  type="email"
+                  placeholder="Enter your email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
                   className="bg-gray-700 border-gray-600 text-white placeholder-gray-400"
                   required
                 />
@@ -177,6 +95,11 @@ const LoginForm = ({ onLogin }: LoginFormProps) => {
                 {isLoading ? 'Signing in...' : 'Sign In'}
               </Button>
             </form>
+            <div className="mt-6 p-4 bg-gray-700 rounded-lg">
+              <p className="text-sm text-gray-300 mb-2">Demo credentials:</p>
+              <p className="text-xs text-gray-400">Admin: admin@example.com / password</p>
+              <p className="text-xs text-gray-400">User: user@example.com / password</p>
+            </div>
           </CardContent>
         </Card>
       </div>
