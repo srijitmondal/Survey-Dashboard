@@ -8,10 +8,9 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { useAuth } from "@/contexts/auth-context"
-import { authenticateUser } from "@/lib/auth"
 
 export default function LoginPage() {
-  const [email, setEmail] = useState("")
+  const [identifier, setIdentifier] = useState("")
   const [password, setPassword] = useState("")
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState("")
@@ -26,15 +25,34 @@ export default function LoginPage() {
     setError("")
 
     try {
-      const user = authenticateUser(email, password)
-      if (user) {
+      const response = await fetch("http://localhost/sv_camera/api/user_login.php", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          identifier,
+          password,
+        }),
+      })
+
+      const data = await response.json()
+
+      if (response.ok) {
+        const user = {
+          id: String(data.id),
+          name: data.name,
+          role: data.role,
+          email: identifier, // Assuming identifier is email
+          phone_number: "", // API does not provide this
+        }
         login(user)
         router.push("/dashboard/map")
       } else {
-        setError("Invalid email or password")
+        setError(data.error || "Invalid identifier or password")
       }
     } catch (err) {
-      setError("Login failed. Please try again.")
+      setError("Login failed. Please check your connection and try again.")
     } finally {
       setIsLoading(false)
     }
@@ -68,10 +86,10 @@ export default function LoginPage() {
 
               <div className="space-y-2">
                 <Input
-                  type="email"
-                  placeholder="Email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  type="text"
+                  placeholder="Email or Phone Number"
+                  value={identifier}
+                  onChange={(e) => setIdentifier(e.target.value)}
                   className="bg-white/10 border-white/20 text-white placeholder:text-gray-400 h-12"
                   required
                 />
@@ -107,12 +125,6 @@ export default function LoginPage() {
                 {isLoading ? "Signing In..." : "Sign In"}
               </Button>
             </form>
-
-            <div className="mt-6 text-center text-sm text-gray-300">
-              <p>Demo Credentials:</p>
-              <p>Admin: admin@atomz.com / password</p>
-              <p>User: user@atomz.com / password</p>
-            </div>
           </CardContent>
         </Card>
       </div>
