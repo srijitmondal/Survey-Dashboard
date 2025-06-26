@@ -7,7 +7,7 @@ import { AuthProvider } from "@/contexts/auth-context"
 const inter = Inter({ subsets: ["latin"] })
 
 export const metadata: Metadata = {
-  title: "Atomz Dashboard",
+  title: "Survey Dashboard",
   description: "Space-themed survey management dashboard",
     generator: 'v0.dev'
 }

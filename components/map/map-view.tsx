@@ -3,39 +3,21 @@
 import { useState, useEffect, useRef } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { mockSurveys, mockMarkers, type Marker } from "@/lib/auth"
 import L from "leaflet"
 import "leaflet/dist/leaflet.css"
-import { survey1Data } from "@/data/survey-data"
-
-// Mock Leaflet map component
-// Utility: convert survey1Data to marker list for the map
-function getSurvey1Markers() {
-  return survey1Data.markers.map((m, idx) => ({
-    id: String(idx + 1),
-    survey_id: "1",
-    marker_id: m.markerId,
-    timestamp: m.timestamp,
-    latitude: m.location.latitude,
-    longitude: m.location.longitude,
-    centerPole: m.centerPole,
-    branchImages: m.branchImages,
-  }))
-}
-
-// Utility: get marker by marker_id from survey1Data
-function getSurvey1MarkerById(marker_id: string) {
-  return survey1Data.markers.find((m) => m.markerId === marker_id)
-}
 
 const MapComponent = ({
   markers,
   onMarkerClick,
   selectedMarkerId,
+  branchImages,
+  selectedMarker,
 }: {
   markers: any[]
   onMarkerClick: (marker: any) => void
   selectedMarkerId?: string | null
+  branchImages?: any[]
+  selectedMarker?: any
 }) => {
   const mapRef = useRef<HTMLDivElement>(null)
   const leafletMapRef = useRef<L.Map | null>(null)
@@ -112,21 +94,67 @@ const MapComponent = ({
         }),
       })
       center.on("click", () => onMarkerClick(marker))
-      center.bindPopup(
-        `<div style='max-width:200px'><b>${marker.marker_id}</b><br/><img src='${marker.centerPole.url}' style='width:100%;border-radius:6px;margin:6px 0'/></div>`
-      )
+      // Only show image if marker.centerPole exists (mock data), otherwise just show marker_id and timestamp
+      let popupHtml = `<div style='max-width:200px'><b>${marker.marker_id}</b>`
+      if (marker.timestamp) {
+        popupHtml += `<br/><span>${marker.timestamp}</span>`
+      }
+      if (marker.centerPole && marker.centerPole.url) {
+        popupHtml += `<br/><img src='${marker.centerPole.url}' style='width:100%;border-radius:6px;margin:6px 0'/>`
+      }
+      popupHtml += `</div>`
+      center.bindPopup(popupHtml)
       center.addTo(markerLayerRef.current!)
-      // Draw arrows for each branch image
-      const uniqueHeadings = new Set()
-      marker.branchImages?.forEach((branch: any) => {
-        if (uniqueHeadings.has(branch.heading)) return
-        uniqueHeadings.add(branch.heading)
-        // Calculate endpoint 60m away
+      // Only draw arrows for mock data with branchImages
+      if (marker.branchImages && Array.isArray(marker.branchImages)) {
+        const uniqueHeadings = new Set()
+        marker.branchImages.forEach((branch: any) => {
+          if (uniqueHeadings.has(branch.heading)) return
+          uniqueHeadings.add(branch.heading)
+          // Calculate endpoint 60m away
+          const R = 6378137
+          const d = 60 / R
+          const theta = (branch.heading * Math.PI) / 180
+          const phi1 = (marker.latitude * Math.PI) / 180
+          const lambda1 = (marker.longitude * Math.PI) / 180
+          const phi2 = Math.asin(Math.sin(phi1) * Math.cos(d) + Math.cos(phi1) * Math.sin(d) * Math.cos(theta))
+          const lambda2 = lambda1 + Math.atan2(Math.sin(theta) * Math.sin(d) * Math.cos(phi1), Math.cos(d) - Math.sin(phi1) * Math.sin(phi2))
+          const endLat = (phi2 * 180) / Math.PI
+          const endLng = (lambda2 * 180) / Math.PI
+          // Draw line
+          L.polyline(
+            [
+              [marker.latitude, marker.longitude],
+              [endLat, endLng],
+            ],
+            { color: "#ff4444", weight: 2, opacity: 0.8 }
+          ).addTo(markerLayerRef.current!)
+          // Draw arrowhead
+          const arrowIcon = L.divIcon({
+            className: "",
+            iconSize: [16, 16],
+            html: `<div style="transform: rotate(${branch.heading}deg);width:0;height:0;border-left:8px solid transparent;border-right:8px solid transparent;border-bottom:16px solid #ff4444;"></div>`
+          })
+          L.marker([endLat, endLng], { icon: arrowIcon })
+            .addTo(markerLayerRef.current!)
+            .bindPopup(
+              `<div style='max-width:200px'><b>Heading: ${branch.heading}°</b><br/><img src='${branch.url}' style='width:100%;border-radius:6px;margin:6px 0'/></div>`
+            )
+        })
+      }
+    })
+    // Draw 50m arrows for branch images of the selected marker
+    if (selectedMarker && branchImages && branchImages.length > 0) {
+      branchImages.forEach((branch: any) => {
+        const startLat = selectedMarker.latitude
+        const startLng = selectedMarker.longitude
+        const heading = branch.heading
+        // Geodesic calculation for 50m
         const R = 6378137
-        const d = 60 / R
-        const theta = (branch.heading * Math.PI) / 180
-        const phi1 = (marker.latitude * Math.PI) / 180
-        const lambda1 = (marker.longitude * Math.PI) / 180
+        const d = 50 / R
+        const theta = (heading * Math.PI) / 180
+        const phi1 = (startLat * Math.PI) / 180
+        const lambda1 = (startLng * Math.PI) / 180
         const phi2 = Math.asin(Math.sin(phi1) * Math.cos(d) + Math.cos(phi1) * Math.sin(d) * Math.cos(theta))
         const lambda2 = lambda1 + Math.atan2(Math.sin(theta) * Math.sin(d) * Math.cos(phi1), Math.cos(d) - Math.sin(phi1) * Math.sin(phi2))
         const endLat = (phi2 * 180) / Math.PI
@@ -134,24 +162,24 @@ const MapComponent = ({
         // Draw line
         L.polyline(
           [
-            [marker.latitude, marker.longitude],
+            [startLat, startLng],
             [endLat, endLng],
           ],
-          { color: "#ff4444", weight: 2, opacity: 0.8 }
+          { color: "#ff4444", weight: 3, opacity: 0.9 }
         ).addTo(markerLayerRef.current!)
         // Draw arrowhead
         const arrowIcon = L.divIcon({
           className: "",
           iconSize: [16, 16],
-          html: `<div style="transform: rotate(${branch.heading}deg);width:0;height:0;border-left:8px solid transparent;border-right:8px solid transparent;border-bottom:16px solid #ff4444;"></div>`
+          html: `<div style="transform: rotate(${heading}deg);width:0;height:0;border-left:8px solid transparent;border-right:8px solid transparent;border-bottom:16px solid #ff4444;"></div>`
         })
         L.marker([endLat, endLng], { icon: arrowIcon })
           .addTo(markerLayerRef.current!)
           .bindPopup(
-            `<div style='max-width:200px'><b>Heading: ${branch.heading}°</b><br/><img src='${branch.url}' style='width:100%;border-radius:6px;margin:6px 0'/></div>`
+            `<div style='max-width:200px'><b>Heading: ${heading}°</b><br/><img src='${branch.url}' style='width:100%;border-radius:6px;margin:6px 0'/></div>`
           )
       })
-    })
+    }
     // Fit bounds
     if (markers.length > 1) {
       const bounds = L.latLngBounds(markers.map((m) => [m.latitude, m.longitude]))
@@ -164,7 +192,7 @@ const MapComponent = ({
       // Do not remove map instance, just clear layers
       markerLayerRef.current?.clearLayers()
     }
-  }, [markers, onMarkerClick])
+  }, [markers, onMarkerClick, branchImages, selectedMarker])
 
   return <div ref={mapRef} className="w-full h-96 rounded-lg z-0" />
 }
@@ -172,10 +200,71 @@ const MapComponent = ({
 export default function MapView() {
   const [selectedSurvey, setSelectedSurvey] = useState<string>("")
   const [selectedMarker, setSelectedMarker] = useState<any | null>(null)
+  const [surveys, setSurveys] = useState<any[]>([])
+  const [loadingSurveys, setLoadingSurveys] = useState(true)
+  const [surveyError, setSurveyError] = useState("")
+  const [markers, setMarkers] = useState<any[]>([])
+  const [loadingMarkers, setLoadingMarkers] = useState(false)
+  const [markerError, setMarkerError] = useState("")
+  const [centerImages, setCenterImages] = useState<any[]>([])
+  const [branchImages, setBranchImages] = useState<any[]>([])
+  const [loadingImages, setLoadingImages] = useState(false)
+  const [imageError, setImageError] = useState("")
 
-  // For Survey 1, use survey1Data, else fallback to mockMarkers
-  const isSurvey1 = selectedSurvey === "1"
-  const markers = isSurvey1 ? getSurvey1Markers() : mockMarkers.filter((m) => m.survey_id === selectedSurvey)
+  useEffect(() => {
+    const fetchSurveys = async () => {
+      setLoadingSurveys(true)
+      setSurveyError("")
+      try {
+        const response = await fetch("http://localhost/sv_camera/api/surveys.php")
+        const data = await response.json()
+        if (response.ok && data.data && data.data.surveys) {
+          setSurveys(data.data.surveys)
+        } else {
+          setSurveyError(data.error || "Failed to load surveys.")
+        }
+      } catch (err) {
+        setSurveyError("Failed to load surveys. Please check your connection.")
+      } finally {
+        setLoadingSurveys(false)
+      }
+    }
+    fetchSurveys()
+  }, [])
+
+  // Always fetch markers from backend for any selected survey
+  useEffect(() => {
+    if (!selectedSurvey) {
+      setMarkers([])
+      return
+    }
+    setLoadingMarkers(true)
+    setMarkerError("")
+    fetch(`http://localhost/sv_camera/api/markers.php?survey_id=${selectedSurvey}`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.success && data.data && data.data.markers) {
+          setMarkers(
+            data.data.markers.map((m: any) => ({
+              id: String(m.marker_table_id),
+              survey_id: String(m.survey_id),
+              marker_id: m.marker_id,
+              timestamp: m.timestamp,
+              latitude: m.location.latitude,
+              longitude: m.location.longitude,
+            }))
+          )
+        } else {
+          setMarkerError(data.error || "Failed to load markers.")
+          setMarkers([])
+        }
+      })
+      .catch(() => {
+        setMarkerError("Failed to load markers. Please check your connection.")
+        setMarkers([])
+      })
+      .finally(() => setLoadingMarkers(false))
+  }, [selectedSurvey])
 
   const handleSurveySelect = (surveyId: string) => {
     setSelectedSurvey(surveyId)
@@ -184,11 +273,31 @@ export default function MapView() {
 
   const handleMarkerClick = (marker: any) => {
     setSelectedMarker(marker)
+    setCenterImages([])
+    setBranchImages([])
+    setLoadingImages(true)
+    setImageError("")
+    // Fetch center images
+    Promise.all([
+      fetch(`http://localhost/sv_camera/api/center-images.php?marker_id=${marker.marker_id}`)
+        .then((res) => res.json()),
+      fetch(`http://localhost/sv_camera/api/branch-images.php?marker_id=${marker.marker_id}`)
+        .then((res) => res.json())
+    ]).then(([centerData, branchData]) => {
+      if (centerData.success && centerData.data && centerData.data.center_images) {
+        setCenterImages(centerData.data.center_images)
+      } else {
+        setImageError(centerData.error || "Failed to load center images.")
+      }
+      if (branchData.success && branchData.data && branchData.data.branch_images) {
+        setBranchImages(branchData.data.branch_images)
+      } else {
+        setImageError(branchData.error || "Failed to load branch images.")
+      }
+    }).catch(() => {
+      setImageError("Failed to load images. Please check your connection.")
+    }).finally(() => setLoadingImages(false))
   }
-
-  // For Survey 1, get center/branch images from marker data
-  const centerImage = isSurvey1 && selectedMarker ? selectedMarker.centerPole?.url : null
-  const branchImages = isSurvey1 && selectedMarker ? selectedMarker.branchImages : []
 
   return (
     <div className="space-y-6">
@@ -200,93 +309,109 @@ export default function MapView() {
           {/* Survey Selection */}
           <div className="space-y-2">
             <label className="text-sm font-medium text-gray-300">Select Survey</label>
-            <Select value={selectedSurvey} onValueChange={handleSurveySelect}>
-              <SelectTrigger className="bg-white/10 border-white/20 text-white">
-                <SelectValue placeholder="Choose a survey..." />
-              </SelectTrigger>
-              <SelectContent className="bg-gray-900 border-white/20">
-                {mockSurveys.map((survey) => (
-                  <SelectItem key={survey.id} value={survey.id} className="text-white hover:bg-white/10">
-                    Survey {survey.id} - AOI: {survey.aoi_id} ({survey.status})
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            {loadingSurveys ? (
+              <div className="text-gray-400">Loading surveys...</div>
+            ) : surveyError ? (
+              <div className="text-red-400">{surveyError}</div>
+            ) : (
+              <Select value={selectedSurvey} onValueChange={handleSurveySelect}>
+                <SelectTrigger className="bg-white/10 border-white/20 text-white">
+                  <SelectValue placeholder="Choose a survey..." />
+                </SelectTrigger>
+                <SelectContent className="bg-gray-900 border-white/20">
+                  {surveys.map((survey) => (
+                    <SelectItem key={survey.survey_id} value={String(survey.survey_id)} className="text-white hover:bg-white/10">
+                      Survey {survey.survey_id} - AOI: {survey.aoi_id}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
           </div>
 
           {/* Map Container */}
           {selectedSurvey ? (
-            <MapComponent
-              markers={markers}
-              onMarkerClick={handleMarkerClick}
-              selectedMarkerId={selectedMarker?.marker_id}
-            />
+            loadingMarkers ? (
+              <div className="w-full h-96 flex items-center justify-center text-gray-400">Loading markers...</div>
+            ) : markerError ? (
+              <div className="w-full h-96 flex items-center justify-center text-red-400">{markerError}</div>
+            ) : (
+              <MapComponent
+                markers={markers}
+                onMarkerClick={handleMarkerClick}
+                selectedMarkerId={selectedMarker?.marker_id}
+                branchImages={branchImages}
+                selectedMarker={selectedMarker}
+              />
+            )
           ) : (
             <div className="w-full h-96 bg-gray-800/50 border border-white/20 rounded-lg flex items-center justify-center">
               <p className="text-gray-400">Select a survey to view markers on the map</p>
             </div>
           )}
 
-          {/* Images Display - Show all branch images for Survey 1 */}
-          {selectedMarker && isSurvey1 && (
+          {/* No images for backend markers */}
+          {/* Images Display for backend markers */}
+          {selectedMarker && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-              {/* Center Image */}
+              {/* Center Images */}
               <Card className="bg-white/5 border-white/10">
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-white text-sm">Center Image</CardTitle>
+                  <CardTitle className="text-white text-sm">Center Image(s)</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  {centerImage ? (
-                    <div className="relative">
-                      <img
-                        src={centerImage}
-                        alt="Center view"
-                        className="w-full h-auto rounded-md"
-                      />
-                      <div className="absolute top-2 right-2 bg-black/60 text-white text-xs px-2 py-1 rounded">
-                        Marker {selectedMarker.marker_id}
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="h-48 flex items-center justify-center bg-gray-800/50 rounded-md">
-                      <p className="text-gray-400">No center image available</p>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-
-              {/* Branch Images with Directions */}
-              <Card className="bg-white/5 border-white/10">
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-white text-sm">Branch Images</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {branchImages && branchImages.length > 0 ? (
+                  {loadingImages ? (
+                    <div className="h-48 flex items-center justify-center text-gray-400">Loading images...</div>
+                  ) : imageError ? (
+                    <div className="h-48 flex items-center justify-center text-red-400">{imageError}</div>
+                  ) : centerImages && centerImages.length > 0 ? (
                     <div className="grid grid-cols-1 gap-4">
-                      {branchImages.map((branch: any, idx: number) => (
+                      {centerImages.map((img: any, idx: number) => (
                         <div key={idx} className="relative">
                           <img
-                            src={branch.url}
-                            alt={`Branch view ${idx + 1}`}
+                            src={img.url}
+                            alt={`Center view ${idx + 1}`}
                             className="w-full h-auto rounded-md"
                           />
-                          {/* Direction indicator */}
-                          <div
-                            className="absolute top-0 left-0 w-full h-full pointer-events-none"
-                            style={{
-                              backgroundImage: `linear-gradient(${branch.heading}deg, rgba(168, 85, 247, 0.4), transparent 70%)`,
-                            }}
-                          ></div>
                           <div className="absolute top-2 right-2 bg-black/60 text-white text-xs px-2 py-1 rounded">
-                            Heading: {branch.heading}°
+                            {img.deviceInfo?.model} {img.deviceInfo?.manufacturer}
                           </div>
                         </div>
                       ))}
                     </div>
                   ) : (
-                    <div className="h-48 flex items-center justify-center bg-gray-800/50 rounded-md">
-                      <p className="text-gray-400">No branch images available</p>
+                    <div className="h-48 flex items-center justify-center text-gray-400">No center image available</div>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Branch Images */}
+              <Card className="bg-white/5 border-white/10">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-white text-sm">Branch Image(s)</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {loadingImages ? (
+                    <div className="h-48 flex items-center justify-center text-gray-400">Loading images...</div>
+                  ) : imageError ? (
+                    <div className="h-48 flex items-center justify-center text-red-400">{imageError}</div>
+                  ) : branchImages && branchImages.length > 0 ? (
+                    <div className="grid grid-cols-1 gap-4">
+                      {branchImages.map((img: any, idx: number) => (
+                        <div key={idx} className="relative">
+                          <img
+                            src={img.url}
+                            alt={`Branch view ${idx + 1}`}
+                            className="w-full h-auto rounded-md"
+                          />
+                          <div className="absolute top-2 right-2 bg-black/60 text-white text-xs px-2 py-1 rounded">
+                            Heading: {img.heading}°
+                          </div>
+                        </div>
+                      ))}
                     </div>
+                  ) : (
+                    <div className="h-48 flex items-center justify-center text-gray-400">No branch images available</div>
                   )}
                 </CardContent>
               </Card>

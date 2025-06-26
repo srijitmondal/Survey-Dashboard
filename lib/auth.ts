@@ -56,12 +56,6 @@ export interface BranchImage {
   format: string
 }
 
-// Mock data
-export const mockUsers: User[] = [
-  { id: "1", email: "admin@atomz.com", phone_number: "+1234567890", name: "Admin User", role: "admin" },
-  { id: "2", email: "user@atomz.com", phone_number: "+1234567891", name: "Survey User", role: "user" },
-  { id: "3", email: "john@atomz.com", phone_number: "+1234567892", name: "John Surveyor", role: "user" },
-]
 
 // Update the mockSurveys data to include the status field
 export const mockSurveys: Survey[] = [
